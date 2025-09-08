@@ -19,6 +19,13 @@ ARG CYCLONEDX_NPM_VERSION=latest
 RUN npm install -g @cyclonedx/cyclonedx-npm@$CYCLONEDX_NPM_VERSION
 RUN npm run sbom
 
+# (Optional) independent verify stage (NOT last)
+FROM busybox:stable AS verify
+WORKDIR /juice-shop
+COPY --from=installer --chown=65532:0 /juice-shop/.well-known ./.well-known
+RUN test -f .well-known/csaf/provider-metadata.json && \
+    echo "Found CSAF file" || (echo "Missing CSAF file" && ls -la .well-known && exit 1)
+
 FROM gcr.io/distroless/nodejs22-debian12
 ARG BUILD_DATE
 ARG VCS_REF
@@ -36,10 +43,7 @@ LABEL maintainer="Bjoern Kimminich <bjoern.kimminich@owasp.org>" \
     org.opencontainers.image.created=$BUILD_DATE
 WORKDIR /juice-shop
 COPY --from=installer --chown=65532:0 /juice-shop .
-COPY --chown=65532:0 .well-known/ .well-known/
-RUN test -f .well-known/csaf/provider-metadata.json && \
-    echo "Found CSAF file" || (echo "Missing CSAF file" && ls -la .well-known && exit 1)
-
 USER 65532
 EXPOSE 3000
 CMD ["/juice-shop/build/app.js"]
+
