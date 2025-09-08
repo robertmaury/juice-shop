@@ -87,6 +87,10 @@ jobs:
             BUILD_DATE=${{ env.BUILD_DATE }}
             CYCLONEDX_NPM_VERSION=${{ env.CYCLONEDX_NPM_VERSION }}
 
+      - name: Pull Image for Wiz Scan
+        if: github.event_name != 'pull_request'
+        run: docker pull "${{ steps.first-tag.outputs.tag }}"
+
       - name: Scan Container with Wiz
         run: |
           curl -Lo wizcli https://wizcli.app.wiz.io/latest/wizcli-linux-amd64
