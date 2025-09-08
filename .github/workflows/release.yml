@@ -20,6 +20,7 @@ jobs:
     env:
       WIZ_CLIENT_ID: ${{ secrets.WIZ_CLIENT_ID }}
       WIZ_CLIENT_SECRET: ${{ secrets.WIZ_CLIENT_SECRET }}
+      BUILDKIT_PROGRESS: plain   # shows full step output
     strategy:
       fail-fast: false
       matrix:
@@ -83,6 +84,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
+            VERIFY_RUN_ID=${{ github.run_id }}
             VCS_REF=${{ env.VCS_REF }}
             BUILD_DATE=${{ env.BUILD_DATE }}
             CYCLONEDX_NPM_VERSION=${{ env.CYCLONEDX_NPM_VERSION }}

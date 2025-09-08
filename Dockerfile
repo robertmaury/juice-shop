@@ -1,6 +1,16 @@
 FROM node:22 AS installer
 COPY . /juice-shop
 WORKDIR /juice-shop
+COPY . .
+
+# force a re-run & emit a clear log line
+ARG VERIFY_RUN_ID
+RUN echo "VERIFY: checking CSAF file (run=$VERIFY_RUN_ID)" && \
+    test -f .well-known/csaf/provider-metadata.json && \
+    echo "VERIFY: Found CSAF file ✅" || \
+    (echo "VERIFY: Missing CSAF file ❌" && ls -la .well-known || true && exit 1)
+
+# ...rest of your installer steps...
 RUN npm i -g typescript ts-node
 RUN npm install --omit=dev --unsafe-perm
 RUN npm dedupe --omit=dev
@@ -18,13 +28,6 @@ RUN rm i18n/*.json || true
 ARG CYCLONEDX_NPM_VERSION=latest
 RUN npm install -g @cyclonedx/cyclonedx-npm@$CYCLONEDX_NPM_VERSION
 RUN npm run sbom
-
-# (Optional) independent verify stage (NOT last)
-FROM busybox:stable AS verify
-WORKDIR /juice-shop
-COPY --from=installer --chown=65532:0 /juice-shop/.well-known ./.well-known
-RUN test -f .well-known/csaf/provider-metadata.json && \
-    echo "Found CSAF file" || (echo "Missing CSAF file" && ls -la .well-known && exit 1)
 
 FROM gcr.io/distroless/nodejs22-debian12
 ARG BUILD_DATE
