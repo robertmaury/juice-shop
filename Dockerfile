@@ -1,14 +1,12 @@
+FROM busybox:stable AS verify
+WORKDIR /v
+COPY .well-known .well-known
+RUN test -f .well-known/csaf/provider-metadata.json
+
 FROM node:22 AS installer
-COPY . /juice-shop
 WORKDIR /juice-shop
 COPY . .
-
-# force a re-run & emit a clear log line
-ARG VERIFY_RUN_ID
-RUN echo "VERIFY: checking CSAF file (run=$VERIFY_RUN_ID)" && \
-    test -f .well-known/csaf/provider-metadata.json && \
-    echo "VERIFY: Found CSAF file ✅" || \
-    (echo "VERIFY: Missing CSAF file ❌" && ls -la .well-known || true && exit 1)
+RUN test -f .well-known/csaf/provider-metadata.json
 
 # ...rest of your installer steps...
 RUN npm i -g typescript ts-node
