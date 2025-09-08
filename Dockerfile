@@ -36,6 +36,10 @@ LABEL maintainer="Bjoern Kimminich <bjoern.kimminich@owasp.org>" \
     org.opencontainers.image.created=$BUILD_DATE
 WORKDIR /juice-shop
 COPY --from=installer --chown=65532:0 /juice-shop .
+COPY --chown=65532:0 .well-known/ .well-known/
+RUN test -f .well-known/csaf/provider-metadata.json && \
+    echo "Found CSAF file" || (echo "Missing CSAF file" && ls -la .well-known && exit 1)
+
 USER 65532
 EXPOSE 3000
 CMD ["/juice-shop/build/app.js"]
