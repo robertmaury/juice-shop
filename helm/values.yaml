@@ -1,0 +1,41 @@
+replicaCount: 1
+
+image:
+  # You can override this at install time:
+  # --set image.repository=034362063961.dkr.ecr.us-east-1.amazonaws.com/juice-shop
+  repository: 034362063961.dkr.ecr.us-east-1.amazonaws.com/juice-shop
+  tag: latest
+  pullPolicy: IfNotPresent
+
+containerPort: 3000
+
+service:
+  name: ""
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    # alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'  # optional
+  hosts:
+    # Hostless catch-all so the app works immediately via the ALB DNS name.
+    - paths:
+        - path: /
+          pathType: Prefix
+  tls: []  # e.g., [{ hosts: ["juice.example.com"], secretName: juice-tls }]
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: []
+
+imagePullSecrets: []    # e.g., [{ name: ecr-creds }]
+nameOverride: ""
+fullnameOverride: ""
+
+podLabels: { app: juice-shop }
