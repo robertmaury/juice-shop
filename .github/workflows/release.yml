@@ -100,7 +100,7 @@ jobs:
           curl -Lo wizcli https://wizcli.app.wiz.io/latest/wizcli-linux-amd64
           chmod +x wizcli
           ./wizcli auth
-          ./wizcli iac scan --dockerfile "${{ matrix.dockerfile }}"
+          ./wizcli iac scan --path "${{ matrix.dockerfile }}"
           ./wizcli docker scan --image "${{ steps.first-tag.outputs.image_ref }}"  
         continue-on-error: true
 
