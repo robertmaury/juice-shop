@@ -173,7 +173,8 @@ jobs:
             ELB_HOSTNAME=$(kubectl get service juice-shop-juice-shop -n juice-shop -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
             if [[ ! -z "$ELB_HOSTNAME" ]]; then
               echo "✅ ELB Hostname: http://$ELB_HOSTNAME"
-              echo "ELB_HOSTNAME=http://$ELB_HOSTNAME" >> $GITHUB_ENV
+              echo "ELB_HOSTNAME=$ELB_HOSTNAME" >> $GITHUB_ENV
+              echo "ELB_URL=http://$ELB_HOSTNAME" >> $GITHUB_ENV
               break
             fi
             echo "Waiting for ELB hostname..."
@@ -183,14 +184,23 @@ jobs:
       - name: 🔁 Update domain in deployment
         if: github.event_name != 'pull_request'
         run: |
+          set -euo pipefail
+          DOMAIN_VALUE="${ELB_HOSTNAME}"
+          if [[ -z "$DOMAIN_VALUE" ]]; then
+            echo "No ELB hostname detected; skipping domain update"
+            exit 0
+          fi
+          if [[ "$DOMAIN_VALUE" != http://* && "$DOMAIN_VALUE" != https://* ]]; then
+            DOMAIN_VALUE="https://$DOMAIN_VALUE"
+          fi
           helm upgrade juice-shop ./helm/juice-shop-chart \
             --namespace juice-shop \
             --reuse-values \
-            --set-string externalDependencies.domain="https://${{ env.ELB_HOSTNAME }}"
+            --set-string externalDependencies.domain="$DOMAIN_VALUE"
           kubectl rollout status deployment/juice-shop-juice-shop -n juice-shop
 
       - name: ✅ Done
         if: github.event_name != 'pull_request'
         run: |
           echo "Deployment complete! 🎉"
-          echo "Frontend exposed at: ${{ env.ELB_HOSTNAME }}"
+          echo "Frontend exposed at: ${{ env.ELB_URL || env.ELB_HOSTNAME }}"
