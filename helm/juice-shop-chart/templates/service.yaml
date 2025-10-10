@@ -4,11 +4,18 @@ metadata:
   name: {{ default (include "juice-shop.fullname" .) .Values.service.name }}
   labels:
     {{- include "juice-shop.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   type: {{ .Values.service.type }}
   selector:
     app: juice-shop
     app.kubernetes.io/instance: {{ .Release.Name }}
+  {{- with .Values.service.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ . }}
+  {{- end }}
   ports:
     - protocol: TCP
       port: {{ .Values.service.port }}
