@@ -15,9 +15,11 @@ import portscanner from 'portscanner'
 // @ts-expect-error FIXME due to non-existing type definitions for check-internet-connected
 import checkInternetConnected from 'check-internet-connected'
 
-const domainDependencies = {
-  'https://www.alchemy.com/': ['"Mint the Honeypot" challenge', '"Wallet Depletion" challenge']
-}
+const domainDependencies: Record<string, string[]> = config.has('externalDependencies.domains')
+  ? config.get<Record<string, string[]>>('externalDependencies.domains')
+  : {
+      'https://www.alchemy.com/': ['"Mint the Honeypot" challenge', '"Wallet Depletion" challenge']
+    }
 
 const validatePreconditions = async ({ exitOnFailure = true } = {}) => {
   let success = true
@@ -25,6 +27,7 @@ const validatePreconditions = async ({ exitOnFailure = true } = {}) => {
   success = checkIfRunningOnSupportedOS(process.platform) && success
   success = checkIfRunningOnSupportedCPU(process.arch) && success
 
+  const domainChecks = Object.keys(domainDependencies).map(async domain => await checkIfDomainReachable(domain))
   const asyncConditions = (await Promise.all([
     checkIfRequiredFileExists('build/server.js'),
     checkIfRequiredFileExists('frontend/dist/frontend/index.html'),
@@ -34,7 +37,7 @@ const validatePreconditions = async ({ exitOnFailure = true } = {}) => {
     checkIfRequiredFileExists('frontend/dist/frontend/runtime.js'),
     checkIfRequiredFileExists('frontend/dist/frontend/vendor.js'),
     checkIfPortIsAvailable(process.env.PORT ?? config.get<number>('server.port')),
-    checkIfDomainReachable('https://www.alchemy.com/')
+    ...domainChecks
   ])).every(condition => condition)
 
   if ((!success || !asyncConditions) && exitOnFailure) {
@@ -87,8 +90,7 @@ export const checkIfDomainReachable = async (domain: string) => {
     })
     .catch(() => {
       logger.warn(`Domain ${colors.bold(domain)} is not reachable (${colors.yellow('NOT OK')} in a future major release)`)
-      // @ts-expect-error FIXME Type problem by accessing key via variable
-      domainDependencies[domain].forEach((dependency: string) => {
+      (domainDependencies[domain] ?? []).forEach((dependency: string) => {
         logger.warn(`${colors.italic(dependency)} will not work as intended without access to ${colors.bold(domain)}`)
       })
       return true // TODO Consider switching to "false" with breaking release v16.0.0 or later

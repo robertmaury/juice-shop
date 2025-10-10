@@ -1,6 +1,11 @@
 name: "Release Pipeline"
 on:
   workflow_dispatch:
+    inputs:
+      external_dependency_domain:
+        description: "External dependency domain override (e.g. https://example.com)"
+        required: false
+        type: string
   push:
     branches:
       - main
@@ -132,19 +137,60 @@ jobs:
       
       - name: 🚀 Deploy Frontend via Helm with ALB Ingress
         if: github.event_name != 'pull_request'
+        env:
+          EXTERNAL_DEPENDENCY_DOMAIN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.external_dependency_domain || vars.EXTERNAL_DEPENDENCY_DOMAIN || '' }}
         run: |
-          helm upgrade --install juice-shop ./helm/juice-shop-chart \
-            --namespace juice-shop --create-namespace \
-            --set image.repository=${{ matrix.image }} \
-            --set image.tag=${{ steps.first-tag.outputs.tag }} \
-            --set service.type=LoadBalancer \
-            --set service.port=80 \
-            --set service.targetPort=3000 \
-            --set ingress.enabled=false \
-            --set 'service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-type=nlb' \
-            --set 'service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-nlb-target-type=ip' \
-            --set 'service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-scheme=internet-facing' \
-            --set 'service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-cross-zone-load-balancing-enabled=true' \
-            --set 'service.externalTrafficPolicy=Local' \
-            --wait
+          set -euo pipefail
 
+          helm_args=(
+            upgrade --install juice-shop ./helm/juice-shop-chart
+            --namespace juice-shop --create-namespace
+            --set image.repository=${{ matrix.image }}
+            --set image.tag=${{ steps.first-tag.outputs.tag }}
+            --set service.type=LoadBalancer
+            --set service.port=80
+            --set service.targetPort=3000
+            --set ingress.enabled=false
+            --set service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-type=nlb
+            --set service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-nlb-target-type=ip
+            --set service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-scheme=internet-facing
+            --set service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-cross-zone-load-balancing-enabled=true
+            --set service.externalTrafficPolicy=Local
+            --wait
+          )
+
+          if [ -n "${EXTERNAL_DEPENDENCY_DOMAIN}" ]; then
+            helm_args+=(--set-string externalDependencies.domain="${EXTERNAL_DEPENDENCY_DOMAIN}")
+          fi
+
+          helm "${helm_args[@]}"
+
+      - name: 🌐 Wait for External ELB
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "⏳ Waiting for ELBs..."
+          for i in {1..30}; do
+            ELB_HOSTNAME=$(kubectl get service juice-shop-juice-shop -n juice-shop -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
+            if [[ ! -z "$ELB_HOSTNAME" ]]; then
+              echo "✅ ELB Hostname: http://$ELB_HOSTNAME"
+              echo "ELB_HOSTNAME=http://$ELB_HOSTNAME" >> $GITHUB_ENV
+              break
+            fi
+            echo "Waiting for ELB hostname..."
+            sleep 10
+          done
+
+      - name: 🔁 Update domain in deployment
+        if: github.event_name != 'pull_request'
+        run: |
+          helm upgrade juice-shop ./helm/juice-shop-chart \
+            --namespace juice-shop \
+            --reuse-values \
+            --set-string externalDependencies.domain="https://${{ env.ELB_HOSTNAME }}"
+          kubectl rollout status deployment/juice-shop-juice-shop -n juice-shop
+
+      - name: ✅ Done
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "Deployment complete! 🎉"
+          echo "Frontend exposed at: ${{ env.ELB_HOSTNAME }}"

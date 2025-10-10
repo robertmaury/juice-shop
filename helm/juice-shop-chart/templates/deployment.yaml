@@ -27,5 +27,33 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - containerPort: {{ .Values.containerPort }}
+          {{- $domains := dict }}
+          {{- $externalDeps := .Values.externalDependencies | default dict }}
+          {{- $domain := $externalDeps.domain | default "" }}
+          {{- $challenges := $externalDeps.challenges | default (list) }}
+          {{- if ne $domain "" }}
+            {{- $_ := set $domains $domain $challenges }}
+          {{- end }}
+          {{- $config := dict }}
+          {{- if gt (len $domains) 0 }}
+            {{- $_ := set $config "externalDependencies" (dict "domains" $domains) }}
+          {{- end }}
+          {{- $extraEnv := .Values.extraEnv | default list }}
+          {{- if or (gt (len $config) 0) (gt (len $extraEnv) 0) }}
+          env:
+            {{- if gt (len $config) 0 }}
+            - name: NODE_CONFIG
+              value: {{ $config | toJson | quote }}
+            {{- end }}
+            {{- range $env := $extraEnv }}
+            - name: {{ $env.name }}
+              {{- if $env.valueFrom }}
+              valueFrom:
+                {{- toYaml $env.valueFrom | nindent 16 }}
+              {{- else }}
+              value: {{ $env.value | quote }}
+              {{- end }}
+            {{- end }}
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
