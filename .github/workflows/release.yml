@@ -122,11 +122,11 @@ jobs:
 
       - name: 💾 Install kubectl
         if: github.event_name != 'pull_request'
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v4
 
       - name: 💾 Install Helm
         if: github.event_name != 'pull_request'
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v4.3.1
 
       - name: 📡 Update kubeconfig for EKS
         if: github.event_name != 'pull_request'
