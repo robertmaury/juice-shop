@@ -26,14 +26,14 @@ jobs:
       matrix:
         include:
           - dockerfile: ./Dockerfile
-            image: ${{ vars.IMAGE_REGISTRY }}
+            image: ${{ startsWith(vars.REPO, vars.REGISTRY) && vars.REPO || format('{0}/{1}', vars.REGISTRY, vars.REPO) }}
             context: .
     steps:
       - name: "Check out Git repository"
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
+        uses: actions/checkout@v4 #v4.2.2
 
       - name: "Set up Docker Buildx"
-        uses: docker/setup-buildx-action@6524bf65af31da8d45b59e8c27de4bd072b392f5 #v3.8.0
+        uses: docker/setup-buildx-action@v3 #v3.8.0
 
       - name: Collect Docker Metadata
         id: meta
@@ -41,16 +41,16 @@ jobs:
         with:
           images: ${{ matrix.image }}
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
 
       - name: Get First Docker Tag
         id: first-tag
         run: |
-          echo "tag=${{ fromJSON(steps.meta.outputs.json).tags[0] }}" >> $GITHUB_OUTPUT
+          image_ref=$(echo "${{ steps.meta.outputs.tags }}" | head -n1 | tr -d '\r' | xargs)
+          echo "image_ref=${image_ref}" >> $GITHUB_OUTPUT
+
+          tag="${image_ref##*:}"
+          echo "tag=${tag}" >> $GITHUB_OUTPUT
 
       - name: "Set labels for ${{ github.ref }}"
         run: |
@@ -59,17 +59,18 @@ jobs:
 
 
       - name: Configure AWS Credentials
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'pull_request'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Log in to ECR Container Registry
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
-          registry: ${{ vars.IMAGE_REGISTRY }}
+          registry: ${{ vars.REGISTRY }}
+          ecr: true
 
       - name: Build Docker Image
         id: build-image
@@ -79,6 +80,7 @@ jobs:
           cache-to: type=gha,mode=max
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
+          load: true
           push: ${{ github.event_name != 'pull_request' }}
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
@@ -89,53 +91,60 @@ jobs:
             BUILD_DATE=${{ env.BUILD_DATE }}
             CYCLONEDX_NPM_VERSION=${{ env.CYCLONEDX_NPM_VERSION }}
 
-      - name: Pull Image for Wiz Scan
-        if: github.event_name != 'pull_request'
-        run: docker pull "${{ steps.first-tag.outputs.tag }}"
+      # - name: Pull Image for Wiz Scan
+      #   if: github.event_name != 'pull_request'
+      #   run: docker pull "${{ steps.first-tag.outputs.tag }}"
 
       - name: Scan Container with Wiz
         run: |
           curl -Lo wizcli https://wizcli.app.wiz.io/latest/wizcli-linux-amd64
           chmod +x wizcli
           ./wizcli auth
-          ./wizcli docker scan --image "${{ steps.first-tag.outputs.tag }}" --dockerfile "${{ matrix.dockerfile }}Dockerfile" \
-            -p "Default vulnerabilities policy" \
-            -p "Default sensitive data policy" \
-            -p "Default secrets policy" \
-            -p "Default malware policy" \
-            --file-hashes-scan
+          ./wizcli iac scan --dockerfile "${{ matrix.dockerfile }}"
+          ./wizcli docker scan --image "${{ steps.first-tag.outputs.image_ref }}"  
         continue-on-error: true
 
       - name: Pull Image for Wiz Tagging
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'pull_request'
         run: |
-          docker pull ${{ steps.first-tag.outputs.tag }}
+          docker pull "${{ matrix.image }}:${{ steps.first-tag.outputs.tag }}"
 
       - name: Tag Container with Wiz
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'pull_request'
         run: |
-          ./wizcli docker tag --image "${{ steps.first-tag.outputs.tag }}"
+          ./wizcli docker tag --image "${{ steps.first-tag.outputs.image_ref }}"
         continue-on-error: true
 
       - name: 💾 Install kubectl
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'pull_request'
         uses: azure/setup-kubectl@v3
 
       - name: 💾 Install Helm
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'pull_request'
         uses: azure/setup-helm@v4
 
       - name: 📡 Update kubeconfig for EKS
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'pull_request'
         run: |
           aws eks update-kubeconfig \
             --region ${{ vars.AWS_REGION }} \
-            --name ${{ vars.EKS_CLUSTER}}
+            --name ${{ vars.EKS_CLUSTER }}
       
       - name: 🚀 Deploy Frontend via Helm with ALB Ingress
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'pull_request'
         run: |
           helm upgrade --install juice-shop ./helm/juice-shop-chart \
             --namespace juice-shop --create-namespace \
-            --set image.repository=${{ vars.IMAGE_REGISTRY}} \
+            --set image.repository=${{ matrix.image }} \
+            --set image.tag=${{ steps.first-tag.outputs.tag }} \
+            --set service.type=LoadBalancer \
+            --set service.port=80 \
+            --set service.targetPort=3000 \
+            --set ingress.enabled=false \
+            --set 'service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-type=nlb' \
+            --set 'service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-nlb-target-type=ip' \
+            --set 'service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-scheme=internet-facing' \
+            --set 'service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-cross-zone-load-balancing-enabled=true' \
+            --set 'service.externalTrafficPolicy=Local' \
             --wait
+
