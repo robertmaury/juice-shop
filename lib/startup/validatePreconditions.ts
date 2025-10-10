@@ -15,11 +15,29 @@ import portscanner from 'portscanner'
 // @ts-expect-error FIXME due to non-existing type definitions for check-internet-connected
 import checkInternetConnected from 'check-internet-connected'
 
-const domainDependencies: Record<string, string[]> = config.has('externalDependencies.domains')
-  ? config.get<Record<string, string[]>>('externalDependencies.domains')
-  : {
-      'https://www.alchemy.com/': ['"Mint the Honeypot" challenge', '"Wallet Depletion" challenge']
-    }
+interface ExternalDependencyConfig {
+  domain?: string
+  challenges?: string[]
+}
+
+const defaultDomainDependencies: Record<string, string[]> = {
+  'https://www.alchemy.com/': ['"Mint the Honeypot" challenge', '"Wallet Depletion" challenge']
+}
+
+const configuredDomainEntries: ExternalDependencyConfig[] | null = config.has('externalDependencies.domains')
+  ? config.get<ExternalDependencyConfig[]>('externalDependencies.domains') ?? []
+  : null
+
+const domainDependencies: Record<string, string[]> = (configuredDomainEntries ?? [])
+  .filter(({ domain }) => typeof domain === 'string' && domain.trim().length > 0)
+  .reduce<Record<string, string[]>>((accumulator, { domain = '', challenges = [] }) => {
+    accumulator[domain] = challenges
+    return accumulator
+  }, {})
+
+if (configuredDomainEntries === null && Object.keys(domainDependencies).length === 0) {
+  Object.assign(domainDependencies, defaultDomainDependencies)
+}
 
 const validatePreconditions = async ({ exitOnFailure = true } = {}) => {
   let success = true

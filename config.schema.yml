@@ -110,6 +110,12 @@ application:
           type: string
         proxy:
           type: string
+externalDependencies:
+  domains:
+    - domain:
+        type: string
+      challenges:
+        - type: string
 challenges:
   showSolvedNotifications:
     type: boolean

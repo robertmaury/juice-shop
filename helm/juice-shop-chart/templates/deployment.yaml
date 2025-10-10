@@ -27,12 +27,13 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - containerPort: {{ .Values.containerPort }}
-          {{- $domains := dict }}
+          {{- $domains := list }}
           {{- $externalDeps := .Values.externalDependencies | default dict }}
           {{- $domain := $externalDeps.domain | default "" }}
           {{- $challenges := $externalDeps.challenges | default (list) }}
           {{- if ne $domain "" }}
-            {{- $_ := set $domains $domain $challenges }}
+            {{- $entry := dict "domain" $domain "challenges" $challenges }}
+            {{- $domains = append $domains $entry }}
           {{- end }}
           {{- $config := dict }}
           {{- if gt (len $domains) 0 }}

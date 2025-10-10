@@ -73,9 +73,10 @@ application:
       - { uri: 'http://penguin.termina.linux.test:4200', proxy: 'https://localchromeos.owasp-juice.shop' }
 externalDependencies:
   domains:
-    'https://www.alchemy.com/':
-      - '"Mint the Honeypot" challenge'
-      - '"Wallet Depletion" challenge'
+    - domain: 'https://www.alchemy.com/'
+      challenges:
+        - '"Mint the Honeypot" challenge'
+        - '"Wallet Depletion" challenge'
 challenges:
   showSolvedNotifications: true
   showHints: true

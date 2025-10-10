@@ -127,9 +127,19 @@ export interface CtfConfig {
   }>
 }
 
+export interface ExternalDependencyConfigEntry {
+  domain: string
+  challenges?: string[]
+}
+
+export interface ExternalDependenciesConfig {
+  domains: ExternalDependencyConfigEntry[]
+}
+
 export interface AppConfig {
   server: ServerConfig
   application: ApplicationConfig
+  externalDependencies: ExternalDependenciesConfig
   challenges: ChallengesConfig
   hackingInstructor: HackingInstructorConfig
   products: Product[]
